@@ -27,8 +27,8 @@ class Lucli < Formula
     # Install as "lucli" in libexec
     libexec.install downloaded => "lucli"
 
-    # Create wrapper in bin so Homebrew puts it on PATH
-    bin.write_exec_script libexec/"lucli"
+    bin.install downloaded => "lucli"
+    chmod 0755, bin/"lucli"
   end
 
   test do
