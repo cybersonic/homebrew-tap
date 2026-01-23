@@ -11,7 +11,7 @@ The tap defines a single formula, `lucli`, which installs prebuilt LuCLI binarie
 Replace `<owner>` with the actual GitHub owner for this tap (for example, `cybersonic` or your GitHub username):
 
 ```bash
-brew tap <owner>/homebrew-tap
+brew tap cybersonic/homebrew-tap
 ```
 
 ### 2. Install LuCLI
