@@ -1,5 +1,7 @@
 # LuCLI Homebrew Tap
 
+⚠️ This tap is in active development and might not work on your system 
+
 This repository provides a Homebrew tap for installing **LuCLI**, a CLI for Lucee CFML.
 
 The tap defines a single formula, `lucli`, which installs prebuilt LuCLI binaries for macOS and Linux.
