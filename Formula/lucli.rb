@@ -1,37 +1,41 @@
 class Lucli < Formula
   desc "CLI for Lucee CFML (LuCLI)"
   homepage "https://github.com/cybersonic/LuCLI"
-  version "0.1.266"
+  license "MIT"
 
-  on_macos do
-    url "https://github.com/cybersonic/LuCLI/releases/download/v0.1.266/lucli-0.1.266-macos"
-    sha256 "3c1b41555cfe59ccd8fbd419d01aa7d6b0a96f7707fa421795ac231855048686"
+  LUCLI_VERSION = "0.3.3"
+
+  if OS.mac?
+    url "https://github.com/cybersonic/LuCLI/releases/download/v#{LUCLI_VERSION}/lucli-#{LUCLI_VERSION}-macos"
+    sha256 "6abf3fa8637ad66ef11592a91649a91b27c620cbaa7aaeb434725e1c15c6b676"
+  elsif OS.linux?
+    url "https://github.com/cybersonic/LuCLI/releases/download/v#{LUCLI_VERSION}/lucli-#{LUCLI_VERSION}-linux"
+    sha256 "3c74ca291b8df26cc4c1e77c8162755b604acc03f6e0fa172602826d35a18126"
   end
 
-  on_linux do
-    url "https://github.com/cybersonic/LuCLI/releases/download/v0.1.266/lucli-0.1.266-linux"
-    sha256 "d132f5d5dbd7603e675f373a8c491bf758d65eec4e3f3193cad6a0350ac2f30f"
-  end
-
-  # If these binaries require Java on PATH, you can add:
-  # depends_on "openjdk"
+  depends_on "openjdk@21"
 
   def install
-    # Determine the downloaded filename based on OS
-    downloaded = if OS.mac?
-      "lucli-0.1.266-macos"
-    else
-      "lucli-0.1.266-linux"
-    end
+    binary = Dir["*"].first
+    libexec.install binary => "lucli"
+    chmod 0755, libexec/"lucli"
 
-    # Install as "lucli" in libexec
-    libexec.install downloaded => "lucli"
-
-    bin.install downloaded => "lucli"
+    (bin/"lucli").write <<~EOS
+      #!/bin/bash
+      export JAVA_HOME="#{Formula["openjdk@21"].opt_libexec}/openjdk.jdk/Contents/Home"
+      exec "#{HOMEBREW_PREFIX}/opt/lucli/libexec/lucli" "$@"
+    EOS
     chmod 0755, bin/"lucli"
   end
 
+  def caveats
+    <<~EOS
+      Java 21 is required and has been installed as a dependency.
+    EOS
+  end
+
   test do
-    system "#{bin}/lucli", "--version"
+    assert_predicate bin/"lucli", :executable?
+    assert_predicate libexec/"lucli", :executable?
   end
 end

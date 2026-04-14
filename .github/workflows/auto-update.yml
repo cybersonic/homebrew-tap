@@ -1,0 +1,110 @@
+name: Auto-Update Formula
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-updates:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for updates
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Current version from formula
+          CURRENT=$(grep "LUCLI_VERSION" Formula/lucli.rb | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+
+          # Latest LuCLI release
+          LATEST=$(gh release view --repo cybersonic/LuCLI --json tagName -q '.tagName' | sed 's/^v//')
+          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
+
+          if [ "$CURRENT" != "$LATEST" ] && [ -n "$LATEST" ]; then
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+            echo "Update available: $CURRENT -> $LATEST"
+          else
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
+            echo "Already up to date: $CURRENT"
+          fi
+
+      - name: Compute SHA256 hashes
+        if: steps.check.outputs.needs_update == 'true'
+        id: hashes
+        run: |
+          VER="${{ steps.check.outputs.latest }}"
+
+          curl -sfL "https://github.com/cybersonic/LuCLI/releases/download/v${VER}/lucli-${VER}-macos" -o /tmp/lucli-macos
+          MACOS_SHA=$(shasum -a 256 /tmp/lucli-macos | awk '{print $1}')
+          echo "macos_sha=$MACOS_SHA" >> "$GITHUB_OUTPUT"
+
+          curl -sfL "https://github.com/cybersonic/LuCLI/releases/download/v${VER}/lucli-${VER}-linux" -o /tmp/lucli-linux
+          LINUX_SHA=$(shasum -a 256 /tmp/lucli-linux | awk '{print $1}')
+          echo "linux_sha=$LINUX_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Update formula
+        if: steps.check.outputs.needs_update == 'true'
+        env:
+          LUCLI_VER: ${{ steps.check.outputs.latest }}
+          MACOS_SHA: ${{ steps.hashes.outputs.macos_sha }}
+          LINUX_SHA: ${{ steps.hashes.outputs.linux_sha }}
+        run: |
+          sed -i '' "s/LUCLI_VERSION = \".*\"/LUCLI_VERSION = \"${LUCLI_VER}\"/" Formula/lucli.rb
+
+          python3 << 'PYEOF'
+          import re, os
+          macos_sha = os.environ["MACOS_SHA"]
+          linux_sha = os.environ["LINUX_SHA"]
+
+          with open("Formula/lucli.rb", "r") as f:
+              content = f.read()
+
+          shas = list(re.finditer(r'sha256 "[a-fA-F0-9]+"', content))
+          if len(shas) >= 2:
+              content = content[:shas[1].start()] + f'sha256 "{linux_sha}"' + content[shas[1].end():]
+              content = content[:shas[0].start()] + f'sha256 "{macos_sha}"' + content[shas[0].end():]
+
+          with open("Formula/lucli.rb", "w") as f:
+              f.write(content)
+          PYEOF
+
+      - name: Create PR
+        if: steps.check.outputs.needs_update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER="${{ steps.check.outputs.latest }}"
+          BRANCH="auto-update/lucli-${VER}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add Formula/lucli.rb
+          git commit -m "chore: update LuCLI to ${VER}"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "chore: update LuCLI to ${VER}" \
+            --body "Auto-update from upstream release.
+
+          - LuCLI: ${{ steps.check.outputs.current }} → ${VER}" \
+            --label "auto-update"
+
+      - name: Enable auto-merge
+        if: steps.check.outputs.needs_update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER="${{ steps.check.outputs.latest }}"
+          PR_URL=$(gh pr list --head "auto-update/lucli-${VER}" --json url -q '.[0].url')
+          if [ -n "$PR_URL" ]; then
+            gh pr merge "$PR_URL" --auto --squash
+          fi

@@ -1,57 +1,40 @@
 # LuCLI Homebrew Tap
 
-⚠️ This tap is in active development and might not work on your system 
-
-This repository provides a Homebrew tap for installing **LuCLI**, a CLI for Lucee CFML.
-
-The tap defines a single formula, `lucli`, which installs prebuilt LuCLI binaries for macOS and Linux.
+Homebrew tap for installing [LuCLI](https://github.com/cybersonic/LuCLI), a CLI for Lucee CFML.
 
 ## Installation
 
-### 1. Add the tap
-
-Replace `<owner>` with the actual GitHub owner for this tap (for example, `cybersonic` or your GitHub username):
-
 ```bash
-brew tap cybersonic/homebrew-tap
-```
-
-### 2. Install LuCLI
-
-Once the tap is added, install LuCLI:
-
-```bash
+brew tap cybersonic/tap
 brew install lucli
 ```
 
-To force a build from the current formula definition in this repo (useful when developing the tap locally):
-
-```bash
-# From the repository root
-brew install --build-from-source ./Formula/lucli.rb
-```
-
 ## Usage
-
-After installation, LuCLI should be available on your `PATH` as `lucli`:
 
 ```bash
 lucli --help
 lucli --version
 ```
 
-## Development (for tap maintainers)
+## What gets installed
 
-From the repository root:
+- **LuCLI binary** — installed to `$(brew --prefix)/opt/lucli/libexec/lucli`
+- **Java 21** — installed automatically as a dependency (`openjdk@21`)
+- **Wrapper script** — `lucli` in your PATH sets `JAVA_HOME` and delegates to the binary
 
-- Run the formula's test block:
+## Updating
 
-  ```bash
-  brew test --verbose lucli
-  ```
+```bash
+brew update
+brew upgrade lucli
+```
 
-- Run Homebrew audit checks on the formula:
+The formula is automatically kept in sync with [cybersonic/LuCLI releases](https://github.com/cybersonic/LuCLI/releases) via a daily GitHub Actions workflow.
 
-  ```bash
-  brew audit --strict --online lucli
-  ```
+## Development
+
+```bash
+brew install --build-from-source ./Formula/lucli.rb   # test install locally
+brew test lucli                                         # run formula tests
+brew audit --strict ./Formula/lucli.rb                  # lint the formula
+```
