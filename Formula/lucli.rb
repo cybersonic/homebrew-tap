@@ -3,7 +3,7 @@ class Lucli < Formula
   homepage "https://github.com/cybersonic/LuCLI"
   license "MIT"
 
-  LUCLI_VERSION = "0.3.3"
+  LUCLI_VERSION = "0.3.3".freeze
 
   if OS.mac?
     url "https://github.com/cybersonic/LuCLI/releases/download/v#{LUCLI_VERSION}/lucli-#{LUCLI_VERSION}-macos"
