@@ -13,8 +13,7 @@ class Lucli < Formula
     sha256 "1e027d932b06db2d381f7f67cc6cac45b0e1004f8a857959f7f8574a50d4aac4"
   end
 
-  # If these binaries require Java on PATH, you can add:
-  # depends_on "openjdk"
+  depends_on "openjdk"
 
   def install
     downloaded = if OS.mac?
