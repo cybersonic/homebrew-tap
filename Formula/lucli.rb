@@ -1,16 +1,16 @@
 class Lucli < Formula
   desc "CLI for Lucee CFML (LuCLI)"
   homepage "https://github.com/cybersonic/LuCLI"
-  version "0.1.266"
+  version "0.3.17"
 
   on_macos do
-    url "https://github.com/cybersonic/LuCLI/releases/download/v0.1.266/lucli-0.1.266-macos"
-    sha256 "3c1b41555cfe59ccd8fbd419d01aa7d6b0a96f7707fa421795ac231855048686"
+    url "https://github.com/cybersonic/LuCLI/releases/download/v0.3.17/lucli-0.3.17-macos"
+    sha256 "cf97659bec46ec30ec41329a9d25d75d3a84add584541cd918683389f5823403"
   end
 
   on_linux do
-    url "https://github.com/cybersonic/LuCLI/releases/download/v0.1.266/lucli-0.1.266-linux"
-    sha256 "d132f5d5dbd7603e675f373a8c491bf758d65eec4e3f3193cad6a0350ac2f30f"
+    url "https://github.com/cybersonic/LuCLI/releases/download/v0.3.17/lucli-0.3.17-linux"
+    sha256 "1e027d932b06db2d381f7f67cc6cac45b0e1004f8a857959f7f8574a50d4aac4"
   end
 
   # If these binaries require Java on PATH, you can add:
