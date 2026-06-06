@@ -9,7 +9,7 @@ class Markspresso < Formula
   def install
     libexec.install "markspresso"
     chmod 0755, libexec/"markspresso"
-    bin.write_env_script libexec/"markspresso", JAVA_HOME: Formula["openjdk"].opt_prefix
+    (bin/"markspresso").write_env_script libexec/"markspresso", JAVA_HOME: Formula["openjdk"].opt_prefix
   end
 
   test do
