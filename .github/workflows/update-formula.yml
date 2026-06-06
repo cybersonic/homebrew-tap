@@ -1,0 +1,357 @@
+name: Update Homebrew formula
+
+on:
+  workflow_call:
+    inputs:
+      formula_name:
+        description: Formula file name without extension (e.g. lucli, markspresso)
+        required: true
+        type: string
+      formula_type:
+        description: Formula layout type. Use "os_split" for separate macOS/Linux assets, "single_asset" for one asset.
+        required: true
+        type: string
+      release_repo:
+        description: Upstream GitHub repository in owner/repo format.
+        required: true
+        type: string
+      version:
+        description: Release version, with or without leading v (e.g. 1.2.3 or v1.2.3).
+        required: true
+        type: string
+      release_tag:
+        description: Optional release tag override. Defaults to v<version>.
+        required: false
+        default: ""
+        type: string
+      asset_name:
+        description: Optional asset name for single_asset formulas. Defaults to formula_name.
+        required: false
+        default: ""
+        type: string
+      macos_asset_name:
+        description: Optional macOS asset name for os_split formulas. Defaults to <formula_name>-<version>-macos.
+        required: false
+        default: ""
+        type: string
+      linux_asset_name:
+        description: Optional Linux asset name for os_split formulas. Defaults to <formula_name>-<version>-linux.
+        required: false
+        default: ""
+        type: string
+      tap_repository:
+        description: Optional tap repository to update. Defaults to current repository.
+        required: false
+        default: ""
+        type: string
+      pr_base_branch:
+        description: Base branch for pull requests.
+        required: false
+        default: main
+        type: string
+    secrets:
+      tap_repo_token:
+        description: Optional token with write access to the tap repository (required for cross-repo calls).
+        required: false
+
+  workflow_dispatch:
+    inputs:
+      formula_name:
+        description: Formula file name without extension (e.g. lucli, markspresso)
+        required: true
+        type: string
+      formula_type:
+        description: Formula layout type (os_split or single_asset)
+        required: true
+        type: choice
+        options:
+          - os_split
+          - single_asset
+      release_repo:
+        description: Upstream GitHub repository in owner/repo format.
+        required: true
+        type: string
+      version:
+        description: Release version without leading v (e.g. 1.2.3).
+        required: true
+        type: string
+      release_tag:
+        description: Optional release tag override. Defaults to v<version>.
+        required: false
+        default: ""
+        type: string
+      asset_name:
+        description: Optional asset name for single_asset formulas. Defaults to formula_name.
+        required: false
+        default: ""
+        type: string
+      macos_asset_name:
+        description: Optional macOS asset name for os_split formulas. Defaults to <formula_name>-<version>-macos.
+        required: false
+        default: ""
+        type: string
+      linux_asset_name:
+        description: Optional Linux asset name for os_split formulas. Defaults to <formula_name>-<version>-linux.
+        required: false
+        default: ""
+        type: string
+      tap_repository:
+        description: Optional tap repository to update. Defaults to current repository.
+        required: false
+        default: ""
+        type: string
+      pr_base_branch:
+        description: Base branch for pull requests.
+        required: false
+        default: main
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-formula:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: tap-update-${{ inputs.formula_name }}
+      cancel-in-progress: false
+    steps:
+      - name: Resolve tap repository
+        id: tap_repo
+        env:
+          TAP_REPOSITORY_INPUT: ${{ inputs.tap_repository }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${TAP_REPOSITORY_INPUT}" ]]; then
+            tap_repository="${TAP_REPOSITORY_INPUT}"
+          else
+            tap_repository="${GITHUB_WORKFLOW_REF%%/.github/workflows/*}"
+            tap_repository="${tap_repository%@*}"
+          fi
+
+          if [[ -z "$tap_repository" ]]; then
+            echo "Unable to resolve tap repository." >&2
+            exit 1
+          fi
+
+          echo "tap_repository=$tap_repository" >> "$GITHUB_OUTPUT"
+      - name: Validate cross-repository authentication
+        if: ${{ steps.tap_repo.outputs.tap_repository != github.repository && secrets.tap_repo_token == '' }}
+        run: |
+          echo "tap_repo_token is required when tap_repository differs from the caller repository." >&2
+          exit 1
+
+      - name: Check out tap repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.tap_repo.outputs.tap_repository }}
+          token: ${{ secrets.tap_repo_token != '' && secrets.tap_repo_token || github.token }}
+          fetch-depth: 0
+
+      - name: Resolve release assets and checksums
+        id: release
+        env:
+          FORMULA_NAME: ${{ inputs.formula_name }}
+          FORMULA_TYPE: ${{ inputs.formula_type }}
+          RELEASE_REPO: ${{ inputs.release_repo }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_TAG_INPUT: ${{ inputs.release_tag }}
+          ASSET_NAME_INPUT: ${{ inputs.asset_name }}
+          MACOS_ASSET_NAME_INPUT: ${{ inputs.macos_asset_name }}
+          LINUX_ASSET_NAME_INPUT: ${{ inputs.linux_asset_name }}
+          GH_TOKEN: ${{ secrets.tap_repo_token != '' && secrets.tap_repo_token || github.token }}
+        run: |
+          set -euo pipefail
+
+          formula_path="Formula/${FORMULA_NAME}.rb"
+          if [[ ! -f "$formula_path" ]]; then
+            echo "Formula file not found: $formula_path" >&2
+            exit 1
+          fi
+
+          case "$FORMULA_TYPE" in
+            os_split|single_asset) ;;
+            *)
+              echo "Unsupported formula_type: $FORMULA_TYPE (expected os_split or single_asset)." >&2
+              exit 1
+              ;;
+          esac
+
+          version="${VERSION#v}"
+          if [[ -z "$version" ]]; then
+            echo "Resolved version is empty. Provide a valid version input." >&2
+            exit 1
+          fi
+
+          release_tag="${RELEASE_TAG_INPUT:-}"
+          if [[ -z "$release_tag" ]]; then
+            release_tag="v${version}"
+          fi
+
+          api_url="https://api.github.com/repos/${RELEASE_REPO}/releases/tags/${release_tag}"
+          release_json="$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "$api_url")"
+
+          asset_url() {
+            local asset_name="$1"
+            jq -r --arg name "$asset_name" \
+              '.assets[] | select(.name == $name) | .browser_download_url' \
+              <<<"$release_json" | head -n 1
+          }
+
+          asset_digest() {
+            local asset_name="$1"
+            jq -r --arg name "$asset_name" \
+              '.assets[] | select(.name == $name) | (.digest // "")' \
+              <<<"$release_json" | head -n 1
+          }
+
+          asset_sha256() {
+            local asset_name="$1"
+            local download_url="$2"
+            local digest
+            local tmp_file
+
+            digest="$(asset_digest "$asset_name")"
+            if [[ "$digest" == sha256:* ]]; then
+              echo "${digest#sha256:}"
+              return
+            fi
+
+            tmp_file="$(mktemp)"
+            curl -fsSL -o "$tmp_file" "$download_url"
+            shasum -a 256 "$tmp_file" | awk '{print $1}'
+            rm -f "$tmp_file"
+          }
+
+          {
+            echo "formula_path=$formula_path"
+            echo "version=$version"
+            echo "release_tag=$release_tag"
+            echo "release_repo=$RELEASE_REPO"
+          } >> "$GITHUB_OUTPUT"
+
+          if [[ "$FORMULA_TYPE" == "os_split" ]]; then
+            macos_asset_name="${MACOS_ASSET_NAME_INPUT:-${FORMULA_NAME}-${version}-macos}"
+            linux_asset_name="${LINUX_ASSET_NAME_INPUT:-${FORMULA_NAME}-${version}-linux}"
+
+            macos_url="$(asset_url "$macos_asset_name")"
+            linux_url="$(asset_url "$linux_asset_name")"
+
+            if [[ -z "$macos_url" || "$macos_url" == "null" ]]; then
+              echo "Could not find macOS asset '$macos_asset_name' on ${RELEASE_REPO}@${release_tag}." >&2
+              exit 1
+            fi
+            if [[ -z "$linux_url" || "$linux_url" == "null" ]]; then
+              echo "Could not find Linux asset '$linux_asset_name' on ${RELEASE_REPO}@${release_tag}." >&2
+              exit 1
+            fi
+
+            macos_sha="$(asset_sha256 "$macos_asset_name" "$macos_url")"
+            linux_sha="$(asset_sha256 "$linux_asset_name" "$linux_url")"
+
+            {
+              echo "macos_url=$macos_url"
+              echo "macos_sha=$macos_sha"
+              echo "linux_url=$linux_url"
+              echo "linux_sha=$linux_sha"
+            } >> "$GITHUB_OUTPUT"
+          else
+            asset_name="${ASSET_NAME_INPUT:-${FORMULA_NAME}}"
+            asset_url_value="$(asset_url "$asset_name")"
+
+            if [[ -z "$asset_url_value" || "$asset_url_value" == "null" ]]; then
+              echo "Could not find asset '$asset_name' on ${RELEASE_REPO}@${release_tag}." >&2
+              exit 1
+            fi
+
+            asset_sha_value="$(asset_sha256 "$asset_name" "$asset_url_value")"
+
+            {
+              echo "asset_url=$asset_url_value"
+              echo "asset_sha=$asset_sha_value"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update formula file
+        env:
+          FORMULA_PATH: ${{ steps.release.outputs.formula_path }}
+          FORMULA_TYPE: ${{ inputs.formula_type }}
+          VERSION: ${{ steps.release.outputs.version }}
+          MACOS_URL: ${{ steps.release.outputs.macos_url }}
+          MACOS_SHA: ${{ steps.release.outputs.macos_sha }}
+          LINUX_URL: ${{ steps.release.outputs.linux_url }}
+          LINUX_SHA: ${{ steps.release.outputs.linux_sha }}
+          ASSET_URL: ${{ steps.release.outputs.asset_url }}
+          ASSET_SHA: ${{ steps.release.outputs.asset_sha }}
+        run: |
+          set -euo pipefail
+
+          ruby <<'RUBY'
+          formula_path = ENV.fetch("FORMULA_PATH")
+          formula_type = ENV.fetch("FORMULA_TYPE")
+          version = ENV.fetch("VERSION")
+          content = File.read(formula_path)
+
+          def replace_once!(content, pattern, replacement, label)
+            updated = content.sub(pattern, replacement)
+            raise "Could not update #{label} in #{ENV.fetch('FORMULA_PATH')}" if updated == content
+            updated
+          end
+
+          content = replace_once!(content, /^  version\s+"[^"]+"/, "  version \"#{version}\"", "version")
+
+          case formula_type
+          when "os_split"
+            macos_block = [
+              "  on_macos do",
+              "    url \"#{ENV.fetch('MACOS_URL')}\"",
+              "    sha256 \"#{ENV.fetch('MACOS_SHA')}\"",
+              "  end"
+            ].join("\n")
+
+            linux_block = [
+              "  on_linux do",
+              "    url \"#{ENV.fetch('LINUX_URL')}\"",
+              "    sha256 \"#{ENV.fetch('LINUX_SHA')}\"",
+              "  end"
+            ].join("\n")
+
+            content = replace_once!(content, /  on_macos do\n    url\s+"[^"]+"\n    sha256\s+"[^"]+"\n  end/, macos_block, "on_macos block")
+            content = replace_once!(content, /  on_linux do\n    url\s+"[^"]+"\n    sha256\s+"[^"]+"\n  end/, linux_block, "on_linux block")
+          when "single_asset"
+            content = replace_once!(content, /^  url\s+"[^"]+"/, "  url \"#{ENV.fetch('ASSET_URL')}\"", "url")
+            content = replace_once!(content, /^  sha256\s+"[^"]+"/, "  sha256 \"#{ENV.fetch('ASSET_SHA')}\"", "sha256")
+          else
+            raise "Unsupported formula_type: #{formula_type}"
+          end
+
+          File.write(formula_path, content)
+          RUBY
+
+      - name: Validate formula syntax
+        run: |
+          set -euo pipefail
+          ruby -c "${{ steps.release.outputs.formula_path }}"
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.tap_repo_token != '' && secrets.tap_repo_token || github.token }}
+          add-paths: |
+            Formula/${{ inputs.formula_name }}.rb
+          branch: automation/${{ inputs.formula_name }}-${{ steps.release.outputs.version }}
+          base: ${{ inputs.pr_base_branch != '' && inputs.pr_base_branch || 'main' }}
+          commit-message: "chore(${{ inputs.formula_name }}): bump to ${{ steps.release.outputs.version }}"
+          title: "chore(${{ inputs.formula_name }}): bump to ${{ steps.release.outputs.version }}"
+          body: |
+            Automated Homebrew formula update.
+
+            - Formula: `${{ inputs.formula_name }}`
+            - Source release: `${{ steps.release.outputs.release_repo }}@${{ steps.release.outputs.release_tag }}`
+            - Triggered by: `${{ github.repository }}`
+          delete-branch: true

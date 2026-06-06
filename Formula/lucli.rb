@@ -17,18 +17,15 @@ class Lucli < Formula
   # depends_on "openjdk"
 
   def install
-    # Determine the downloaded filename based on OS
     downloaded = if OS.mac?
-      "lucli-0.1.266-macos"
+      "lucli-#{version}-macos"
     else
-      "lucli-0.1.266-linux"
+      "lucli-#{version}-linux"
     end
 
-    # Install as "lucli" in libexec
+    # Install the downloaded binary under libexec and expose a wrapper in bin.
     libexec.install downloaded => "lucli"
-
-    bin.install downloaded => "lucli"
-    chmod 0755, bin/"lucli"
+    bin.write_exec_script libexec/"lucli"
   end
 
   test do
