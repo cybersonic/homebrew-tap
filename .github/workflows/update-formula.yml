@@ -138,10 +138,15 @@ jobs:
 
           echo "tap_repository=$tap_repository" >> "$GITHUB_OUTPUT"
       - name: Validate cross-repository authentication
-        if: ${{ steps.tap_repo.outputs.tap_repository != github.repository && secrets.tap_repo_token == '' }}
+        env:
+          TAP_REPOSITORY: ${{ steps.tap_repo.outputs.tap_repository }}
+          TAP_REPO_TOKEN: ${{ secrets.tap_repo_token }}
         run: |
-          echo "tap_repo_token is required when tap_repository differs from the caller repository." >&2
-          exit 1
+          set -euo pipefail
+          if [[ "${TAP_REPOSITORY}" != "${GITHUB_REPOSITORY}" && -z "${TAP_REPO_TOKEN}" ]]; then
+            echo "tap_repo_token is required when tap_repository differs from the caller repository." >&2
+            exit 1
+          fi
 
       - name: Check out tap repository
         uses: actions/checkout@v4
