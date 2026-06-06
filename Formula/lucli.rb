@@ -25,6 +25,7 @@ class Lucli < Formula
 
     # Install the downloaded binary under libexec and expose a wrapper in bin.
     libexec.install downloaded => "lucli"
+    chmod 0755, libexec/"lucli"
     bin.write_exec_script libexec/"lucli"
   end
 
