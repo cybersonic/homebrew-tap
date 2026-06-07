@@ -303,9 +303,10 @@ jobs:
           content = File.read(formula_path)
 
           def replace_once!(content, pattern, replacement, label)
-            updated = content.sub(pattern, replacement)
-            raise "Could not update #{label} in #{ENV.fetch('FORMULA_PATH')}" if updated == content
-            updated
+            unless pattern.match?(content)
+              raise "Could not find #{label} in #{ENV.fetch('FORMULA_PATH')}"
+            end
+            content.sub(pattern, replacement)
           end
 
           content = replace_once!(content, /^  version\s+"[^"]+"/, "  version \"#{version}\"", "version")
