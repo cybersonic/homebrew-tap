@@ -2,6 +2,7 @@ class Lucli < Formula
   desc "CLI for Lucee CFML (LuCLI)"
   homepage "https://github.com/cybersonic/LuCLI"
   version "0.3.17"
+  head "https://github.com/cybersonic/LuCLI.git", branch: "main"
 
   on_macos do
     url "https://github.com/cybersonic/LuCLI/releases/download/v0.3.17/lucli-0.3.17-macos"
@@ -14,16 +15,25 @@ class Lucli < Formula
   end
 
   depends_on "openjdk"
+  on_head do
+    depends_on "maven" => :build
+  end
 
   def install
-    downloaded = if OS.mac?
-      "lucli-#{version}-macos"
+    if build.head?
+      ENV["JAVA_HOME"] = Formula["openjdk"].opt_prefix
+      system "mvn", "clean", "package", "-Pbinary", "-DskipTests"
+      libexec.install "target/lucli"
     else
-      "lucli-#{version}-linux"
-    end
+      downloaded = if OS.mac?
+        "lucli-#{version}-macos"
+      else
+        "lucli-#{version}-linux"
+      end
 
-    # Install the downloaded binary under libexec and expose a wrapper in bin.
-    libexec.install downloaded => "lucli"
+      # Install the downloaded binary under libexec and expose a wrapper in bin.
+      libexec.install downloaded => "lucli"
+    end
     chmod 0755, libexec/"lucli"
     bin.write_exec_script libexec/"lucli"
   end
